@@ -1,0 +1,27 @@
+{
+  "name": "codex-ctx",
+  "version": "0.1.0",
+  "description": "Switch Codex CLI auth contexts with `codex ctx work`.",
+  "type": "module",
+  "bin": {
+    "codex-ctx": "bin/codex-ctx.js"
+  },
+  "files": [
+    "bin",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "codex",
+    "openai",
+    "cli",
+    "auth",
+    "context"
+  ],
+  "author": "hiddenpunch",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
