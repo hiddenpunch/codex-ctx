@@ -17,7 +17,7 @@ const wrapperMarker = "codex-ctx wrapper";
 
 function usage() {
   console.log(`Usage:
-  codex-ctx install [--real-codex <path>] [--force]
+  codex-ctx install [--real-codex <path>] [--force] [--no-modify-shell]
   codex-ctx doctor
   codex-ctx uninstall
 
@@ -99,12 +99,19 @@ function resolveRealCodex(explicitPath) {
 
 function parseArgs(argv) {
   const args = [...argv];
-  const opts = { command: args.shift() || "help", force: false, realCodex: "" };
+  const opts = {
+    command: args.shift() || "help",
+    force: false,
+    modifyShell: true,
+    realCodex: ""
+  };
 
   while (args.length) {
     const arg = args.shift();
     if (arg === "--force") {
       opts.force = true;
+    } else if (arg === "--no-modify-shell") {
+      opts.modifyShell = false;
     } else if (arg === "--real-codex") {
       opts.realCodex = args.shift() || "";
       if (!opts.realCodex) fail("--real-codex requires a path");
@@ -137,10 +144,20 @@ function install(opts) {
 
   console.log(`Installed codex-ctx wrapper: ${wrapperPath}`);
   console.log(`Real Codex CLI: ${realCodex}`);
-  checkPathAdvice();
+
+  const shellConfig = opts.modifyShell ? ensureShellPath() : null;
+  if (!shellConfig) {
+    checkPathAdvice();
+  }
 
   console.log("");
   console.log("Next steps:");
+  if (shellConfig) {
+    console.log(`  source ${shellConfig}`);
+  } else {
+    console.log('  export PATH="$HOME/.local/bin:$PATH"');
+  }
+  console.log("  hash -r 2>/dev/null || rehash");
   console.log("  type -a codex");
   console.log("  codex ctx");
   console.log("");
@@ -185,6 +202,58 @@ function checkPathAdvice() {
     console.log('  export PATH="$HOME/.local/bin:$PATH"');
     console.log("  hash -r 2>/dev/null || rehash");
   }
+}
+
+function shellConfigPath() {
+  const shell = process.env.SHELL || "";
+  const shellName = path.basename(shell);
+
+  if (shellName === "zsh") return path.join(home, ".zshrc");
+  if (shellName === "bash") return path.join(home, ".bashrc");
+
+  if (fs.existsSync(path.join(home, ".zshrc"))) return path.join(home, ".zshrc");
+  if (fs.existsSync(path.join(home, ".bashrc"))) return path.join(home, ".bashrc");
+
+  return "";
+}
+
+function ensureShellPath() {
+  const configPath = shellConfigPath();
+  if (!configPath) {
+    console.log("");
+    console.log("Could not detect a shell config file to update.");
+    return null;
+  }
+
+  const block = [
+    "",
+    "# >>> codex-ctx >>>",
+    'export PATH="$HOME/.local/bin:$PATH"',
+    "# <<< codex-ctx <<<",
+    ""
+  ].join("\n");
+
+  let existing = "";
+  try {
+    existing = fs.readFileSync(configPath, "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.log("");
+      console.log(`Could not read ${configPath}: ${error.message}`);
+      return null;
+    }
+  }
+
+  if (existing.includes("# >>> codex-ctx >>>")) {
+    console.log("");
+    console.log(`Shell config already contains codex-ctx PATH setup: ${configPath}`);
+    return configPath;
+  }
+
+  fs.appendFileSync(configPath, block, { mode: 0o644 });
+  console.log("");
+  console.log(`Updated shell config: ${configPath}`);
+  return configPath;
 }
 
 function doctor() {

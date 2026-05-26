@@ -15,6 +15,17 @@ npm install -g codex-ctx
 codex-ctx install
 ```
 
+`codex-ctx install` installs the wrapper and adds `~/.local/bin` to your shell
+config. Reload your shell config in the current terminal:
+
+```sh
+source ~/.zshrc   # zsh
+# or
+source ~/.bashrc  # bash
+
+hash -r 2>/dev/null || rehash
+```
+
 Then make sure the wrapper is the first `codex` in your shell:
 
 ```sh
@@ -27,7 +38,8 @@ The first line must be:
 codex is ~/.local/bin/codex
 ```
 
-If another Codex appears first, put `~/.local/bin` at the front of your `PATH`:
+If another Codex appears first, put `~/.local/bin` at the front of your `PATH`
+near the end of your shell config, after nvm/Homebrew setup:
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
@@ -35,8 +47,11 @@ hash -r 2>/dev/null || rehash
 type -a codex
 ```
 
-Add that export to your shell config if needed. For zsh with nvm or Homebrew,
-put it near the end of `~/.zshrc`, after nvm/Homebrew PATH setup.
+If you do not want `codex-ctx install` to edit your shell config, run:
+
+```sh
+codex-ctx install --no-modify-shell
+```
 
 Run the doctor if anything looks off:
 
