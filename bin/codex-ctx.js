@@ -138,6 +138,14 @@ function install(opts) {
   console.log(`Installed codex-ctx wrapper: ${wrapperPath}`);
   console.log(`Real Codex CLI: ${realCodex}`);
   checkPathAdvice();
+
+  console.log("");
+  console.log("Next steps:");
+  console.log("  type -a codex");
+  console.log("  codex ctx");
+  console.log("");
+  console.log("The first `codex` from `type -a codex` must be:");
+  console.log(`  ${wrapperPath}`);
 }
 
 function uninstall() {
@@ -163,7 +171,8 @@ function checkPathAdvice() {
 
   if (wrapperIndex === -1) {
     console.log("");
-    console.log("Add this to your shell config so the wrapper is found first:");
+    console.log("Add this to your shell config so the wrapper is found first.");
+    console.log("For zsh, put it near the end of ~/.zshrc, after nvm/homebrew setup:");
     console.log('  export PATH="$HOME/.local/bin:$PATH"');
     return;
   }
@@ -174,7 +183,7 @@ function checkPathAdvice() {
     console.log(`  ${codexPath}`);
     console.log("Run:");
     console.log('  export PATH="$HOME/.local/bin:$PATH"');
-    console.log("  hash -r");
+    console.log("  hash -r 2>/dev/null || rehash");
   }
 }
 
@@ -194,6 +203,7 @@ function doctor() {
   if (codexPath && path.resolve(codexPath) !== path.resolve(wrapperPath)) {
     console.log("");
     console.log("warning: codex does not resolve to the codex-ctx wrapper in this shell.");
+    console.log(`expected first codex: ${wrapperPath}`);
   }
 }
 

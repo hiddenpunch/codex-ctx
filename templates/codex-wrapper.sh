@@ -83,6 +83,7 @@ load_ctx_auth() {
 }
 
 mkdir -p "$CODEX_HOME_DIR" "$CTX_HOME" "$AUTH_CONTEXTS_DIR"
+chmod 700 "$CTX_HOME" "$AUTH_CONTEXTS_DIR" 2>/dev/null || true
 
 if [[ "${1:-}" == "ctx" ]]; then
   cmd="${2:-status}"
@@ -99,15 +100,16 @@ if [[ "${1:-}" == "ctx" ]]; then
       ;;
     list)
       active="$(current_ctx)"
-      find "$AUTH_CONTEXTS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null \
-        | sort \
-        | while IFS= read -r name; do
-            marker=" "
-            [[ "$name" == "$active" ]] && marker="*"
-            state="not logged in"
-            [[ -f "$(ctx_auth_for "$name")" ]] && state="auth saved"
-            printf '%s %s\t%s\t%s\n' "$marker" "$name" "$state" "$(ctx_dir_for "$name")"
-          done
+      for dir in "$AUTH_CONTEXTS_DIR"/*; do
+        [[ -d "$dir" ]] || continue
+        basename "$dir"
+      done | sort | while IFS= read -r name; do
+        marker=" "
+        [[ "$name" == "$active" ]] && marker="*"
+        state="not logged in"
+        [[ -f "$(ctx_auth_for "$name")" ]] && state="auth saved"
+        printf '%s %s\t%s\t%s\n' "$marker" "$name" "$state" "$(ctx_dir_for "$name")"
+      done
       ;;
     home)
       ctx="${3:-$(current_ctx)}"

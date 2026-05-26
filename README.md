@@ -15,26 +15,64 @@ npm install -g codex-ctx
 codex-ctx install
 ```
 
-Make sure `~/.local/bin` appears before the real Codex CLI in your `PATH`:
+Then make sure the wrapper is the first `codex` in your shell:
+
+```sh
+type -a codex
+```
+
+The first line must be:
+
+```text
+codex is ~/.local/bin/codex
+```
+
+If another Codex appears first, put `~/.local/bin` at the front of your `PATH`:
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
-hash -r
+hash -r 2>/dev/null || rehash
+type -a codex
 ```
 
-Add that export to your shell config if needed.
+Add that export to your shell config if needed. For zsh with nvm or Homebrew,
+put it near the end of `~/.zshrc`, after nvm/Homebrew PATH setup.
+
+Run the doctor if anything looks off:
+
+```sh
+codex-ctx doctor
+```
 
 ## Usage
+
+First check the current context:
 
 ```sh
 codex ctx
 codex ctx list
+```
 
+Your existing Codex login is treated as the `default` context. To add another
+account:
+
+```sh
 codex ctx work
 codex login
+```
 
-codex ctx personal
-codex login
+After login, switch once to save that account's auth, then switch back:
+
+```sh
+codex ctx default
+codex ctx work
+```
+
+Now switch accounts before starting Codex:
+
+```sh
+codex ctx default
+codex
 
 codex ctx work
 codex
@@ -94,7 +132,7 @@ still resolving `codex` to the real Codex CLI. Run:
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
-hash -r
+hash -r 2>/dev/null || rehash
 type -a codex
 ```
 
