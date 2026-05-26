@@ -50,6 +50,25 @@ function commandExists(cmd) {
   return result.status === 0 ? result.stdout.trim() : "";
 }
 
+function codexCandidatesFromPath() {
+  const seen = new Set();
+  const candidates = [];
+
+  for (const entry of (process.env.PATH || "").split(path.delimiter)) {
+    if (!entry) continue;
+
+    const candidate = path.resolve(entry, "codex");
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+
+    if (isExecutable(candidate)) {
+      candidates.push(candidate);
+    }
+  }
+
+  return candidates;
+}
+
 function quoteShell(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
@@ -85,16 +104,20 @@ function resolveRealCodex(explicitPath) {
   }
 
   const found = commandExists("codex");
-  if (!found) {
-    fail("could not find Codex CLI. Install @openai/codex first, or pass --real-codex <path>.");
+  if (found) {
+    const resolved = path.resolve(found);
+    if (resolved !== path.resolve(wrapperPath) && !isInstalledWrapper(resolved)) {
+      return resolved;
+    }
   }
 
-  const resolved = path.resolve(found);
-  if (resolved === path.resolve(wrapperPath) || isInstalledWrapper(resolved)) {
-    fail("command -v codex points at the codex-ctx wrapper. Pass --real-codex <path>.");
+  for (const candidate of codexCandidatesFromPath()) {
+    if (candidate === path.resolve(wrapperPath)) continue;
+    if (isInstalledWrapper(candidate)) continue;
+    return candidate;
   }
 
-  return resolved;
+  fail("could not find the real Codex CLI. Install @openai/codex first, or pass --real-codex <path>.");
 }
 
 function parseArgs(argv) {

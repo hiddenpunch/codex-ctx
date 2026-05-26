@@ -1,6 +1,6 @@
 {
   "name": "codex-ctx",
-  "version": "0.1.2",
+  "version": "0.1.3-rc.0",
   "description": "Switch Codex CLI auth contexts with `codex ctx work`.",
   "type": "module",
   "bin": {
