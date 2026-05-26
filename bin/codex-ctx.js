@@ -50,6 +50,11 @@ function commandExists(cmd) {
   return result.status === 0 ? result.stdout.trim() : "";
 }
 
+function runOutput(command, args) {
+  const result = spawnSync(command, args, { encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
 function codexCandidatesFromPath() {
   const seen = new Set();
   const candidates = [];
@@ -65,6 +70,60 @@ function codexCandidatesFromPath() {
       candidates.push(candidate);
     }
   }
+
+  return candidates;
+}
+
+function addCandidate(candidates, seen, candidate) {
+  if (!candidate) return;
+
+  const resolved = path.resolve(candidate);
+  if (seen.has(resolved)) return;
+  seen.add(resolved);
+
+  if (isExecutable(resolved)) {
+    candidates.push(resolved);
+  }
+}
+
+function globCodexBins(baseDir) {
+  const candidates = [];
+
+  try {
+    for (const name of fs.readdirSync(baseDir)) {
+      const candidate = path.join(baseDir, name, "bin", "codex");
+      if (isExecutable(candidate)) {
+        candidates.push(candidate);
+      }
+    }
+  } catch {
+    // Ignore missing optional install locations.
+  }
+
+  return candidates;
+}
+
+function codexCandidates() {
+  const seen = new Set();
+  const candidates = [];
+
+  for (const candidate of codexCandidatesFromPath()) {
+    addCandidate(candidates, seen, candidate);
+  }
+
+  const npmRoot = runOutput("npm", ["root", "-g"]);
+  if (npmRoot) {
+    addCandidate(candidates, seen, path.join(npmRoot, "@openai", "codex", "bin", "codex.js"));
+    addCandidate(candidates, seen, path.join(npmRoot, "@openai", "codex", "bin", "codex"));
+  }
+
+  const nvmVersions = path.join(home, ".nvm", "versions", "node");
+  for (const candidate of globCodexBins(nvmVersions)) {
+    addCandidate(candidates, seen, candidate);
+  }
+
+  addCandidate(candidates, seen, "/opt/homebrew/bin/codex");
+  addCandidate(candidates, seen, "/usr/local/bin/codex");
 
   return candidates;
 }
@@ -111,7 +170,7 @@ function resolveRealCodex(explicitPath) {
     }
   }
 
-  for (const candidate of codexCandidatesFromPath()) {
+  for (const candidate of codexCandidates()) {
     if (candidate === path.resolve(wrapperPath)) continue;
     if (isInstalledWrapper(candidate)) continue;
     return candidate;
@@ -291,6 +350,16 @@ function doctor() {
   console.log(`real codex executable: ${realCodex && isExecutable(realCodex) ? "yes" : "no"}`);
   console.log(`state dir: ${stateDir}`);
   console.log(`auth contexts: ${path.join(home, ".codex-auth-contexts")}`);
+  console.log("codex candidates:");
+  for (const candidate of codexCandidates()) {
+    let kind = "real candidate";
+    if (candidate === path.resolve(wrapperPath)) {
+      kind = "codex-ctx wrapper";
+    } else if (isInstalledWrapper(candidate)) {
+      kind = "codex-ctx wrapper";
+    }
+    console.log(`  ${candidate} (${kind})`);
+  }
 
   if (codexPath && path.resolve(codexPath) !== path.resolve(wrapperPath)) {
     console.log("");
