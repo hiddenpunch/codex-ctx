@@ -1,6 +1,6 @@
 {
   "name": "codex-ctx",
-  "version": "0.2.0-rc.1",
+  "version": "0.2.0",
   "description": "Switch Codex CLI auth contexts without wrapping the codex command.",
   "type": "module",
   "bin": {
