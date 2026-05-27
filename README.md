@@ -13,10 +13,10 @@ npm install -g codex-ctx
 
 ## Usage
 
-Save your current Codex login:
+Initialize `codex-ctx` from your current Codex login:
 
 ```sh
-codex-ctx add personal
+codex-ctx init
 ```
 
 Add another account:
@@ -30,7 +30,7 @@ codex-ctx add work
 Switch accounts before starting Codex:
 
 ```sh
-codex-ctx use personal
+codex-ctx use default
 codex
 
 codex-ctx use work
@@ -54,6 +54,7 @@ codex-ctx remove work
 ## Commands
 
 ```sh
+codex-ctx init             # save current ~/.codex/auth.json as default
 codex-ctx add <name>       # save current ~/.codex/auth.json as a context
 codex-ctx create <name>    # create an empty context and clear active auth
 codex-ctx use <name>       # restore a saved context to ~/.codex/auth.json
@@ -66,6 +67,8 @@ codex-ctx doctor           # show storage and auth status
 Aliases:
 
 ```text
+init --force overwrites the saved default context with the current active auth.
+
 save   -> add
 new    -> create
 switch -> use

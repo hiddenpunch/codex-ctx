@@ -13,6 +13,7 @@ const contextsDir = path.join(home, ".codex-auth-contexts");
 
 function usage() {
   console.log(`Usage:
+  codex-ctx init             Save current Codex auth as the default context
   codex-ctx add <name>       Save current Codex auth as a context
   codex-ctx create <name>    Create an empty context and clear active auth
   codex-ctx use <name>       Switch Codex auth to a saved context
@@ -21,7 +22,7 @@ function usage() {
   codex-ctx remove <name>    Remove a saved context
   codex-ctx doctor           Show storage and auth status
 
-Codex sessions, config, logs, and caches stay shared in ~/.codex.
+  Codex sessions, config, logs, and caches stay shared in ~/.codex.
 Only ~/.codex/auth.json is switched.`);
 }
 
@@ -89,6 +90,24 @@ function copyFilePreservingMode(from, to) {
   } catch {
     fs.chmodSync(to, 0o600);
   }
+}
+
+function initDefault(options = {}) {
+  if (hasContext("default") && !options.force) {
+    writeCurrent("default");
+    console.log("default context already exists");
+    console.log("run: codex-ctx init --force to overwrite it with the current active auth");
+    return;
+  }
+
+  if (!hasActiveAuth()) {
+    fail(`no active Codex auth found at ${activeAuth}; run codex login first`);
+  }
+
+  mkdirp(contextDir("default"));
+  copyFilePreservingMode(activeAuth, contextAuth("default"));
+  writeCurrent("default");
+  console.log("initialized default context from current Codex auth");
 }
 
 function saveActiveTo(name) {
@@ -182,25 +201,43 @@ function doctor() {
   console.log(`state dir: ${stateDir}`);
   console.log(`current: ${readCurrent()}`);
   console.log(`saved contexts: ${fs.readdirSync(contextsDir).filter((name) => fs.statSync(contextDir(name)).isDirectory()).length}`);
+  if (!hasContext("default")) {
+    console.log("default context: missing");
+    if (hasActiveAuth()) {
+      console.log("run: codex-ctx init");
+    } else {
+      console.log("run: codex login, then codex-ctx init");
+    }
+  } else {
+    console.log("default context: present");
+  }
 }
 
 function parse(argv) {
-  const [command, name, extra] = argv;
-  if (extra) {
-    fail(`unexpected argument: ${extra}`, 2);
+  const [command, name, ...rest] = argv;
+  const force = rest.includes("--force") || name === "--force";
+  const extras = rest.filter((arg) => arg !== "--force");
+  if (extras.length > 0) {
+    fail(`unexpected argument: ${extras[0]}`, 2);
   }
 
   switch (command || "help") {
+    case "init":
+      initDefault({ force });
+      break;
     case "add":
     case "save":
+      if (force) fail("--force is only supported by init", 2);
       saveActiveTo(name);
       break;
     case "create":
     case "new":
+      if (force) fail("--force is only supported by init", 2);
       createContext(name);
       break;
     case "use":
     case "switch":
+      if (force) fail("--force is only supported by init", 2);
       useContext(name);
       break;
     case "list":
@@ -214,6 +251,7 @@ function parse(argv) {
     case "remove":
     case "rm":
     case "delete":
+      if (force) fail("--force is only supported by init", 2);
       removeContext(name);
       break;
     case "doctor":
