@@ -27,6 +27,9 @@ codex login
 codex-ctx add work
 ```
 
+`create` starts a blank context for the next login. `add` saves the currently
+active Codex login into a named context.
+
 Switch accounts before starting Codex:
 
 ```sh
@@ -51,6 +54,12 @@ Remove a context:
 codex-ctx remove work
 ```
 
+Rename a context:
+
+```sh
+codex-ctx rename work company
+```
+
 ## Commands
 
 ```sh
@@ -58,6 +67,7 @@ codex-ctx init             # save current ~/.codex/auth.json as default
 codex-ctx add <name>       # save current ~/.codex/auth.json as a context
 codex-ctx create <name>    # create an empty context and clear active auth
 codex-ctx use <name>       # restore a saved context to ~/.codex/auth.json
+codex-ctx rename <old> <new>
 codex-ctx list             # list saved contexts
 codex-ctx current          # show current context
 codex-ctx remove <name>    # remove a saved context
@@ -72,6 +82,7 @@ init --force overwrites the saved default context with the current active auth.
 save   -> add
 new    -> create
 switch -> use
+mv     -> rename
 ls     -> list
 status -> current
 rm     -> remove

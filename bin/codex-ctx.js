@@ -17,6 +17,7 @@ function usage() {
   codex-ctx add <name>       Save current Codex auth as a context
   codex-ctx create <name>    Create an empty context and clear active auth
   codex-ctx use <name>       Switch Codex auth to a saved context
+  codex-ctx rename <old> <new>
   codex-ctx list             List saved contexts
   codex-ctx current          Show current context
   codex-ctx remove <name>    Remove a saved context
@@ -191,6 +192,31 @@ function removeContext(name) {
   console.log(`removed context: ${name}`);
 }
 
+function renameContext(oldName, newName) {
+  requireContextName(oldName);
+  requireContextName(newName);
+
+  if (oldName === newName) {
+    fail("old and new context names are the same", 2);
+  }
+
+  const oldDir = contextDir(oldName);
+  const newDir = contextDir(newName);
+
+  if (!fs.existsSync(oldDir)) {
+    fail(`context not found: ${oldName}`);
+  }
+  if (fs.existsSync(newDir)) {
+    fail(`context already exists: ${newName}`);
+  }
+
+  fs.renameSync(oldDir, newDir);
+  if (readCurrent() === oldName) {
+    writeCurrent(newName);
+  }
+  console.log(`renamed context: ${oldName} -> ${newName}`);
+}
+
 function doctor() {
   mkdirp(stateDir);
   mkdirp(contextsDir);
@@ -214,12 +240,10 @@ function doctor() {
 }
 
 function parse(argv) {
-  const [command, name, ...rest] = argv;
-  const force = rest.includes("--force") || name === "--force";
-  const extras = rest.filter((arg) => arg !== "--force");
-  if (extras.length > 0) {
-    fail(`unexpected argument: ${extras[0]}`, 2);
-  }
+  const [command, name, second] = argv;
+  const force = argv.includes("--force");
+  const argsWithoutFlags = argv.filter((arg) => arg !== "--force");
+  const positional = argsWithoutFlags.slice(1);
 
   switch (command || "help") {
     case "init":
@@ -228,33 +252,46 @@ function parse(argv) {
     case "add":
     case "save":
       if (force) fail("--force is only supported by init", 2);
+      if (positional.length !== 1) fail("usage: codex-ctx add <name>", 2);
       saveActiveTo(name);
       break;
     case "create":
     case "new":
       if (force) fail("--force is only supported by init", 2);
+      if (positional.length !== 1) fail("usage: codex-ctx create <name>", 2);
       createContext(name);
       break;
     case "use":
     case "switch":
       if (force) fail("--force is only supported by init", 2);
+      if (positional.length !== 1) fail("usage: codex-ctx use <name>", 2);
       useContext(name);
       break;
     case "list":
     case "ls":
+      if (positional.length !== 0) fail("usage: codex-ctx list", 2);
       listContexts();
       break;
     case "current":
     case "status":
+      if (positional.length !== 0) fail("usage: codex-ctx current", 2);
       currentContext();
+      break;
+    case "rename":
+    case "mv":
+      if (force) fail("--force is only supported by init", 2);
+      if (positional.length !== 2) fail("usage: codex-ctx rename <old> <new>", 2);
+      renameContext(name, second);
       break;
     case "remove":
     case "rm":
     case "delete":
       if (force) fail("--force is only supported by init", 2);
+      if (positional.length !== 1) fail("usage: codex-ctx remove <name>", 2);
       removeContext(name);
       break;
     case "doctor":
+      if (positional.length !== 0) fail("usage: codex-ctx doctor", 2);
       doctor();
       break;
     case "-h":
