@@ -1,14 +1,13 @@
 {
   "name": "codex-ctx",
-  "version": "0.1.3-rc.1",
-  "description": "Switch Codex CLI auth contexts with `codex ctx work`.",
+  "version": "0.2.0-rc.0",
+  "description": "Switch Codex CLI auth contexts without wrapping the codex command.",
   "type": "module",
   "bin": {
     "codex-ctx": "bin/codex-ctx.js"
   },
   "files": [
     "bin",
-    "templates",
     "README.md",
     "LICENSE"
   ],

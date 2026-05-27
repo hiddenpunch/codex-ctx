@@ -1,102 +1,79 @@
 # codex-ctx
 
-Switch Codex CLI auth contexts with `codex ctx work`.
+Switch Codex CLI auth contexts without wrapping the `codex` command.
 
-`codex-ctx` installs a tiny `codex` wrapper. The wrapper handles only
-`codex ctx ...` commands and forwards everything else to the real Codex CLI.
-
-It switches only `~/.codex/auth.json`. Your Codex sessions, config, logs,
-caches, and history stay shared in `~/.codex`.
+`codex-ctx` switches only `~/.codex/auth.json`. Your Codex sessions, config,
+logs, caches, and history stay shared in `~/.codex`.
 
 ## Install
 
 ```sh
 npm install -g codex-ctx
-codex-ctx install
-```
-
-`codex-ctx install` installs the wrapper and adds `~/.local/bin` to your shell
-config. Reload your shell config in the current terminal:
-
-```sh
-source ~/.zshrc   # zsh
-# or
-source ~/.bashrc  # bash
-
-hash -r 2>/dev/null || rehash
-```
-
-Then make sure the wrapper is the first `codex` in your shell:
-
-```sh
-type -a codex
-```
-
-The first line must be:
-
-```text
-codex is ~/.local/bin/codex
-```
-
-If another Codex appears first, put `~/.local/bin` at the front of your `PATH`
-near the end of your shell config, after nvm/Homebrew setup:
-
-```sh
-export PATH="$HOME/.local/bin:$PATH"
-hash -r 2>/dev/null || rehash
-type -a codex
-```
-
-If you do not want `codex-ctx install` to edit your shell config, run:
-
-```sh
-codex-ctx install --no-modify-shell
-```
-
-Run the doctor if anything looks off:
-
-```sh
-codex-ctx doctor
 ```
 
 ## Usage
 
-First check the current context:
+Save your current Codex login:
 
 ```sh
-codex ctx
-codex ctx list
+codex-ctx add personal
 ```
 
-Your existing Codex login is treated as the `default` context. To add another
-account:
+Add another account:
 
 ```sh
-codex ctx work
+codex-ctx create work
 codex login
+codex-ctx add work
 ```
 
-After login, switch once to save that account's auth, then switch back:
+Switch accounts before starting Codex:
 
 ```sh
-codex ctx default
-codex ctx work
-```
-
-Now switch accounts before starting Codex:
-
-```sh
-codex ctx default
+codex-ctx use personal
 codex
 
-codex ctx work
+codex-ctx use work
 codex
 ```
 
-When you switch contexts, the current `~/.codex/auth.json` is saved under the
-previous context, then the selected context's auth file is restored. If the
-selected context has no saved auth yet, Codex becomes logged out until you run
-`codex login`.
+List and inspect contexts:
+
+```sh
+codex-ctx list
+codex-ctx current
+codex-ctx doctor
+```
+
+Remove a context:
+
+```sh
+codex-ctx remove work
+```
+
+## Commands
+
+```sh
+codex-ctx add <name>       # save current ~/.codex/auth.json as a context
+codex-ctx create <name>    # create an empty context and clear active auth
+codex-ctx use <name>       # restore a saved context to ~/.codex/auth.json
+codex-ctx list             # list saved contexts
+codex-ctx current          # show current context
+codex-ctx remove <name>    # remove a saved context
+codex-ctx doctor           # show storage and auth status
+```
+
+Aliases:
+
+```text
+save   -> add
+new    -> create
+switch -> use
+ls     -> list
+status -> current
+rm     -> remove
+delete -> remove
+```
 
 ## Storage
 
@@ -115,49 +92,31 @@ Auth contexts:
 
 ```text
 ~/.codex-auth-contexts/
-  work/auth.json
   personal/auth.json
+  work/auth.json
 ```
 
-Wrapper state:
+State:
 
 ```text
 ~/.codex-ctx/
   current
-  real_codex
 ```
 
-## Commands
+## Notes
+
+`codex-ctx` does not install a `codex` wrapper and does not modify your shell
+`PATH`. Run `codex-ctx use <name>` before `codex`.
+
+If you previously used the experimental `codex ctx` wrapper, remove it
+manually if needed:
 
 ```sh
-codex ctx                 # show current auth context
-codex ctx list            # list known auth contexts
-codex ctx <name>          # switch auth context
-codex ctx home [name]     # print auth storage path
-
-codex-ctx install         # install ~/.local/bin/codex wrapper
-codex-ctx doctor          # diagnose PATH and wrapper setup
-codex-ctx uninstall       # remove wrapper
-```
-
-## Troubleshooting
-
-If `codex ctx` starts Codex instead of printing context status, your shell is
-still resolving `codex` to the real Codex CLI. Run:
-
-```sh
-export PATH="$HOME/.local/bin:$PATH"
+rm ~/.local/bin/codex
 hash -r 2>/dev/null || rehash
-type -a codex
 ```
 
-The first `codex` should be `~/.local/bin/codex`.
-
-If the installer cannot find the real Codex CLI:
-
-```sh
-codex-ctx install --real-codex /path/to/codex
-```
+Only remove that file if it is the `codex-ctx` wrapper.
 
 ## Security
 

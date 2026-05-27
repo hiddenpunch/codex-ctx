@@ -3,26 +3,26 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, "..");
 const home = os.homedir();
+const codexHome = process.env.CODEX_HOME || path.join(home, ".codex");
+const activeAuth = path.join(codexHome, "auth.json");
 const stateDir = path.join(home, ".codex-ctx");
-const wrapperPath = path.join(home, ".local", "bin", "codex");
-const realCodexPathFile = path.join(stateDir, "real_codex");
-const wrapperTemplatePath = path.join(rootDir, "templates", "codex-wrapper.sh");
-const wrapperMarker = "codex-ctx wrapper";
+const currentFile = path.join(stateDir, "current");
+const contextsDir = path.join(home, ".codex-auth-contexts");
 
 function usage() {
   console.log(`Usage:
-  codex-ctx install [--real-codex <path>] [--force] [--no-modify-shell]
-  codex-ctx doctor
-  codex-ctx uninstall
+  codex-ctx add <name>       Save current Codex auth as a context
+  codex-ctx create <name>    Create an empty context and clear active auth
+  codex-ctx use <name>       Switch Codex auth to a saved context
+  codex-ctx list             List saved contexts
+  codex-ctx current          Show current context
+  codex-ctx remove <name>    Remove a saved context
+  codex-ctx doctor           Show storage and auth status
 
-Installs a small codex wrapper at ~/.local/bin/codex. The wrapper handles
-"codex ctx ..." and forwards every other command to the real Codex CLI.`);
+Codex sessions, config, logs, and caches stay shared in ~/.codex.
+Only ~/.codex/auth.json is switched.`);
 }
 
 function fail(message, code = 1) {
@@ -30,359 +30,205 @@ function fail(message, code = 1) {
   process.exit(code);
 }
 
-function mkdirp(dir) {
-  fs.mkdirSync(dir, { recursive: true });
-}
-
-function isExecutable(file) {
+function mkdirp(dir, mode = 0o700) {
+  fs.mkdirSync(dir, { recursive: true, mode });
   try {
-    fs.accessSync(file, fs.constants.X_OK);
-    return true;
+    fs.chmodSync(dir, mode);
   } catch {
-    return false;
+    // Best effort: chmod can fail on some filesystems.
   }
 }
 
-function commandExists(cmd) {
-  const result = spawnSync("sh", ["-lc", `command -v ${quoteShell(cmd)}`], {
-    encoding: "utf8"
-  });
-  return result.status === 0 ? result.stdout.trim() : "";
+function validContextName(name) {
+  return /^[A-Za-z0-9._-]+$/.test(name);
 }
 
-function runOutput(command, args) {
-  const result = spawnSync(command, args, { encoding: "utf8" });
-  return result.status === 0 ? result.stdout.trim() : "";
-}
-
-function codexCandidatesFromPath() {
-  const seen = new Set();
-  const candidates = [];
-
-  for (const entry of (process.env.PATH || "").split(path.delimiter)) {
-    if (!entry) continue;
-
-    const candidate = path.resolve(entry, "codex");
-    if (seen.has(candidate)) continue;
-    seen.add(candidate);
-
-    if (isExecutable(candidate)) {
-      candidates.push(candidate);
-    }
+function requireContextName(name) {
+  if (!name) {
+    fail("context name is required", 2);
   }
-
-  return candidates;
-}
-
-function addCandidate(candidates, seen, candidate) {
-  if (!candidate) return;
-
-  const resolved = path.resolve(candidate);
-  if (seen.has(resolved)) return;
-  seen.add(resolved);
-
-  if (isExecutable(resolved)) {
-    candidates.push(resolved);
+  if (!validContextName(name)) {
+    fail("invalid context name; use only letters, numbers, dot, underscore, or dash", 2);
   }
 }
 
-function globCodexBins(baseDir) {
-  const candidates = [];
+function contextDir(name) {
+  return path.join(contextsDir, name);
+}
 
+function contextAuth(name) {
+  return path.join(contextDir(name), "auth.json");
+}
+
+function readCurrent() {
   try {
-    for (const name of fs.readdirSync(baseDir)) {
-      const candidate = path.join(baseDir, name, "bin", "codex");
-      if (isExecutable(candidate)) {
-        candidates.push(candidate);
-      }
-    }
+    const value = fs.readFileSync(currentFile, "utf8").trim();
+    return value || "default";
   } catch {
-    // Ignore missing optional install locations.
-  }
-
-  return candidates;
-}
-
-function codexCandidates() {
-  const seen = new Set();
-  const candidates = [];
-
-  for (const candidate of codexCandidatesFromPath()) {
-    addCandidate(candidates, seen, candidate);
-  }
-
-  const npmRoot = runOutput("npm", ["root", "-g"]);
-  if (npmRoot) {
-    addCandidate(candidates, seen, path.join(npmRoot, "@openai", "codex", "bin", "codex.js"));
-    addCandidate(candidates, seen, path.join(npmRoot, "@openai", "codex", "bin", "codex"));
-  }
-
-  const nvmVersions = path.join(home, ".nvm", "versions", "node");
-  for (const candidate of globCodexBins(nvmVersions)) {
-    addCandidate(candidates, seen, candidate);
-  }
-
-  addCandidate(candidates, seen, "/opt/homebrew/bin/codex");
-  addCandidate(candidates, seen, "/usr/local/bin/codex");
-
-  return candidates;
-}
-
-function quoteShell(value) {
-  return `'${String(value).replaceAll("'", "'\\''")}'`;
-}
-
-function isInstalledWrapper(file) {
-  try {
-    return fs.readFileSync(file, "utf8").includes(wrapperMarker);
-  } catch {
-    return false;
+    return "default";
   }
 }
 
-function readRealCodexPath() {
-  try {
-    return fs.readFileSync(realCodexPathFile, "utf8").trim();
-  } catch {
-    return "";
-  }
-}
-
-function resolveRealCodex(explicitPath) {
-  if (explicitPath) {
-    const resolved = path.resolve(explicitPath);
-    if (!isExecutable(resolved)) {
-      fail(`--real-codex is not executable: ${resolved}`);
-    }
-    return resolved;
-  }
-
-  const existing = readRealCodexPath();
-  if (existing && isExecutable(existing) && path.resolve(existing) !== path.resolve(wrapperPath)) {
-    return existing;
-  }
-
-  const found = commandExists("codex");
-  if (found) {
-    const resolved = path.resolve(found);
-    if (resolved !== path.resolve(wrapperPath) && !isInstalledWrapper(resolved)) {
-      return resolved;
-    }
-  }
-
-  for (const candidate of codexCandidates()) {
-    if (candidate === path.resolve(wrapperPath)) continue;
-    if (isInstalledWrapper(candidate)) continue;
-    return candidate;
-  }
-
-  fail("could not find the real Codex CLI. Install @openai/codex first, or pass --real-codex <path>.");
-}
-
-function parseArgs(argv) {
-  const args = [...argv];
-  const opts = {
-    command: args.shift() || "help",
-    force: false,
-    modifyShell: true,
-    realCodex: ""
-  };
-
-  while (args.length) {
-    const arg = args.shift();
-    if (arg === "--force") {
-      opts.force = true;
-    } else if (arg === "--no-modify-shell") {
-      opts.modifyShell = false;
-    } else if (arg === "--real-codex") {
-      opts.realCodex = args.shift() || "";
-      if (!opts.realCodex) fail("--real-codex requires a path");
-    } else if (arg === "-h" || arg === "--help") {
-      opts.command = "help";
-    } else {
-      fail(`unknown argument: ${arg}`, 2);
-    }
-  }
-
-  return opts;
-}
-
-function install(opts) {
-  const realCodex = resolveRealCodex(opts.realCodex);
-
-  if (fs.existsSync(wrapperPath) && !isInstalledWrapper(wrapperPath) && !opts.force) {
-    fail(`${wrapperPath} already exists and was not installed by codex-ctx. Use --force to replace it.`);
-  }
-
+function writeCurrent(name) {
   mkdirp(stateDir);
-  mkdirp(path.dirname(wrapperPath));
-
-  fs.writeFileSync(realCodexPathFile, `${realCodex}\n`, { mode: 0o600 });
-
-  let wrapper = fs.readFileSync(wrapperTemplatePath, "utf8");
-  wrapper = wrapper.replaceAll("__CODEX_CTX_MARKER__", wrapperMarker);
-  fs.writeFileSync(wrapperPath, wrapper, { mode: 0o755 });
-  fs.chmodSync(wrapperPath, 0o755);
-
-  console.log(`Installed codex-ctx wrapper: ${wrapperPath}`);
-  console.log(`Real Codex CLI: ${realCodex}`);
-
-  const shellConfig = opts.modifyShell ? ensureShellPath() : null;
-  if (!shellConfig) {
-    checkPathAdvice();
-  }
-
-  console.log("");
-  console.log("Next steps:");
-  if (shellConfig) {
-    console.log(`  source ${shellConfig}`);
-  } else {
-    console.log('  export PATH="$HOME/.local/bin:$PATH"');
-  }
-  console.log("  hash -r 2>/dev/null || rehash");
-  console.log("  type -a codex");
-  console.log("  codex ctx");
-  console.log("");
-  console.log("The first `codex` from `type -a codex` must be:");
-  console.log(`  ${wrapperPath}`);
+  fs.writeFileSync(currentFile, `${name}\n`, { mode: 0o600 });
 }
 
-function uninstall() {
-  if (!fs.existsSync(wrapperPath)) {
-    console.log("codex-ctx wrapper is not installed.");
-    return;
-  }
-
-  if (!isInstalledWrapper(wrapperPath)) {
-    fail(`${wrapperPath} exists but was not installed by codex-ctx; refusing to remove it.`);
-  }
-
-  fs.rmSync(wrapperPath);
-  console.log(`Removed codex-ctx wrapper: ${wrapperPath}`);
-  console.log(`Kept state in ${stateDir} and auth contexts in ~/.codex-auth-contexts.`);
+function hasActiveAuth() {
+  return fs.existsSync(activeAuth);
 }
 
-function checkPathAdvice() {
-  const pathEntries = (process.env.PATH || "").split(path.delimiter);
-  const localBin = path.join(home, ".local", "bin");
-  const wrapperIndex = pathEntries.indexOf(localBin);
-  const codexPath = commandExists("codex");
-
-  if (wrapperIndex === -1) {
-    console.log("");
-    console.log("Add this to your shell config so the wrapper is found first.");
-    console.log("For zsh, put it near the end of ~/.zshrc, after nvm/homebrew setup:");
-    console.log('  export PATH="$HOME/.local/bin:$PATH"');
-    return;
-  }
-
-  if (codexPath && path.resolve(codexPath) !== path.resolve(wrapperPath)) {
-    console.log("");
-    console.log("Your current shell still resolves codex to:");
-    console.log(`  ${codexPath}`);
-    console.log("Run:");
-    console.log('  export PATH="$HOME/.local/bin:$PATH"');
-    console.log("  hash -r 2>/dev/null || rehash");
-  }
+function hasContext(name) {
+  return fs.existsSync(contextAuth(name));
 }
 
-function shellConfigPath() {
-  const shell = process.env.SHELL || "";
-  const shellName = path.basename(shell);
-
-  if (shellName === "zsh") return path.join(home, ".zshrc");
-  if (shellName === "bash") return path.join(home, ".bashrc");
-
-  if (fs.existsSync(path.join(home, ".zshrc"))) return path.join(home, ".zshrc");
-  if (fs.existsSync(path.join(home, ".bashrc"))) return path.join(home, ".bashrc");
-
-  return "";
-}
-
-function ensureShellPath() {
-  const configPath = shellConfigPath();
-  if (!configPath) {
-    console.log("");
-    console.log("Could not detect a shell config file to update.");
-    return null;
-  }
-
-  const block = [
-    "",
-    "# >>> codex-ctx >>>",
-    'export PATH="$HOME/.local/bin:$PATH"',
-    "# <<< codex-ctx <<<",
-    ""
-  ].join("\n");
-
-  let existing = "";
+function copyFilePreservingMode(from, to) {
+  fs.copyFileSync(from, to);
   try {
-    existing = fs.readFileSync(configPath, "utf8");
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      console.log("");
-      console.log(`Could not read ${configPath}: ${error.message}`);
-      return null;
-    }
+    fs.chmodSync(to, fs.statSync(from).mode & 0o777);
+  } catch {
+    fs.chmodSync(to, 0o600);
+  }
+}
+
+function saveActiveTo(name) {
+  requireContextName(name);
+  if (!hasActiveAuth()) {
+    fail(`no active Codex auth found at ${activeAuth}; run codex login first`);
   }
 
-  if (existing.includes("# >>> codex-ctx >>>")) {
-    console.log("");
-    console.log(`Shell config already contains codex-ctx PATH setup: ${configPath}`);
-    return configPath;
+  mkdirp(contextDir(name));
+  copyFilePreservingMode(activeAuth, contextAuth(name));
+  writeCurrent(name);
+  console.log(`saved current Codex auth as context: ${name}`);
+}
+
+function createContext(name) {
+  requireContextName(name);
+  mkdirp(contextDir(name));
+  try {
+    fs.rmSync(contextAuth(name), { force: true });
+    fs.rmSync(activeAuth, { force: true });
+  } catch {
+    // rmSync with force should not throw for missing files, but keep create best-effort.
+  }
+  writeCurrent(name);
+  console.log(`created empty context: ${name}`);
+  console.log("run: codex login");
+  console.log(`then: codex-ctx add ${name}`);
+}
+
+function useContext(name) {
+  requireContextName(name);
+  if (!hasContext(name)) {
+    fail(`context not found: ${name}\nrun: codex-ctx add ${name}`);
   }
 
-  fs.appendFileSync(configPath, block, { mode: 0o644 });
-  console.log("");
-  console.log(`Updated shell config: ${configPath}`);
-  return configPath;
+  mkdirp(codexHome);
+  copyFilePreservingMode(contextAuth(name), activeAuth);
+  fs.chmodSync(activeAuth, 0o600);
+  writeCurrent(name);
+  console.log(`codex-ctx -> ${name}`);
+}
+
+function listContexts() {
+  mkdirp(contextsDir);
+  const current = readCurrent();
+  const names = fs.readdirSync(contextsDir)
+    .filter((name) => fs.statSync(contextDir(name)).isDirectory())
+    .sort();
+
+  if (names.length === 0) {
+    console.log("no contexts saved");
+    return;
+  }
+
+  for (const name of names) {
+    const marker = name === current ? "*" : " ";
+    const state = hasContext(name) ? "auth saved" : "not logged in";
+    console.log(`${marker} ${name}\t${state}\t${contextDir(name)}`);
+  }
+}
+
+function currentContext() {
+  const current = readCurrent();
+  const state = hasActiveAuth() ? "auth present" : "not logged in";
+  console.log(`current: ${current}`);
+  console.log(`active auth: ${activeAuth} (${state})`);
+  console.log(`stored auth: ${contextAuth(current)}`);
+}
+
+function removeContext(name) {
+  requireContextName(name);
+  const dir = contextDir(name);
+  if (!fs.existsSync(dir)) {
+    fail(`context not found: ${name}`);
+  }
+
+  fs.rmSync(dir, { recursive: true, force: true });
+  if (readCurrent() === name) {
+    writeCurrent("default");
+  }
+  console.log(`removed context: ${name}`);
 }
 
 function doctor() {
-  const realCodex = readRealCodexPath();
-  const codexPath = commandExists("codex");
-
+  mkdirp(stateDir);
+  mkdirp(contextsDir);
   console.log("codex-ctx doctor");
-  console.log(`wrapper: ${wrapperPath}`);
-  console.log(`wrapper installed: ${isInstalledWrapper(wrapperPath) ? "yes" : "no"}`);
-  console.log(`command -v codex: ${codexPath || "not found"}`);
-  console.log(`real codex: ${realCodex || "not configured"}`);
-  console.log(`real codex executable: ${realCodex && isExecutable(realCodex) ? "yes" : "no"}`);
+  console.log(`Codex home: ${codexHome}`);
+  console.log(`active auth: ${activeAuth} (${hasActiveAuth() ? "present" : "missing"})`);
+  console.log(`contexts dir: ${contextsDir}`);
   console.log(`state dir: ${stateDir}`);
-  console.log(`auth contexts: ${path.join(home, ".codex-auth-contexts")}`);
-  console.log("codex candidates:");
-  for (const candidate of codexCandidates()) {
-    let kind = "real candidate";
-    if (candidate === path.resolve(wrapperPath)) {
-      kind = "codex-ctx wrapper";
-    } else if (isInstalledWrapper(candidate)) {
-      kind = "codex-ctx wrapper";
-    }
-    console.log(`  ${candidate} (${kind})`);
+  console.log(`current: ${readCurrent()}`);
+  console.log(`saved contexts: ${fs.readdirSync(contextsDir).filter((name) => fs.statSync(contextDir(name)).isDirectory()).length}`);
+}
+
+function parse(argv) {
+  const [command, name, extra] = argv;
+  if (extra) {
+    fail(`unexpected argument: ${extra}`, 2);
   }
 
-  if (codexPath && path.resolve(codexPath) !== path.resolve(wrapperPath)) {
-    console.log("");
-    console.log("warning: codex does not resolve to the codex-ctx wrapper in this shell.");
-    console.log(`expected first codex: ${wrapperPath}`);
+  switch (command || "help") {
+    case "add":
+    case "save":
+      saveActiveTo(name);
+      break;
+    case "create":
+    case "new":
+      createContext(name);
+      break;
+    case "use":
+    case "switch":
+      useContext(name);
+      break;
+    case "list":
+    case "ls":
+      listContexts();
+      break;
+    case "current":
+    case "status":
+      currentContext();
+      break;
+    case "remove":
+    case "rm":
+    case "delete":
+      removeContext(name);
+      break;
+    case "doctor":
+      doctor();
+      break;
+    case "-h":
+    case "--help":
+    case "help":
+      usage();
+      break;
+    default:
+      fail(`unknown command: ${command}`, 2);
   }
 }
 
-const opts = parseArgs(process.argv.slice(2));
-
-switch (opts.command) {
-  case "install":
-    install(opts);
-    break;
-  case "uninstall":
-    uninstall();
-    break;
-  case "doctor":
-    doctor();
-    break;
-  case "help":
-    usage();
-    break;
-  default:
-    fail(`unknown command: ${opts.command}`, 2);
-}
+mkdirp(stateDir);
+mkdirp(contextsDir);
+parse(process.argv.slice(2));
